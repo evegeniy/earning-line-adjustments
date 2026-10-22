@@ -1,0 +1,60 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/*
+ * Replays the business case from the assignment and prints the line's audit history.
+ * Usage: php bin/demo
+ */
+
+use Payroll\Application\Command\AddManualAdjustment\AddManualAdjustment;
+use Payroll\Application\Command\ApplySystemCalculation\ApplySystemCalculation;
+use Payroll\Application\EventSubscriber;
+use Payroll\Application\Query\GetEarningLineHistory\GetEarningLineHistory;
+use Payroll\Domain\Shared\DomainEvent;
+use Payroll\Infrastructure\Clock\SystemClock;
+use Payroll\Infrastructure\InMemoryContainer;
+use Payroll\UI\Cli\HistoryTable;
+use Payroll\UI\Cli\MoneyFormatter;
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+// Shows which domain events every step produced.
+$eventPrinter = new class implements EventSubscriber {
+    public function __invoke(DomainEvent $event): void
+    {
+        echo '   event: ', (new ReflectionClass($event))->getShortName(), PHP_EOL;
+    }
+};
+
+$app = new InMemoryContainer(new SystemClock(), $eventPrinter);
+$lineId = 'base-salary-2025-01';
+$specialist = 'specialist-1';
+
+$steps = [
+    ['System calculates the line', new ApplySystemCalculation($lineId, '1000.00', 'USD')],
+    ['Source data changes, system recalculates', new ApplySystemCalculation($lineId, '1050.00', 'USD')],
+    ['Specialist adds a manual correction', new AddManualAdjustment($lineId, '-45.55', 'USD', 'Employee declined dental benefit; reversing deduction', $specialist)],
+    ['Source data changes again, system attempts to recalculate', new ApplySystemCalculation($lineId, '1100.00', 'USD')],
+    ['Specialist adds a second correction', new AddManualAdjustment($lineId, '+100.10', 'USD', 'Late correction: missed approved overtime bonus', $specialist)],
+    ['Specialist adds a third correction', new AddManualAdjustment($lineId, '-0.10', 'USD', 'Minor rounding adjustment', $specialist)],
+    ['Specialist adds a fourth correction', new AddManualAdjustment($lineId, '-0.20', 'USD', 'Second minor rounding adjustment', $specialist)],
+    ['Specialist adds a compensating correction', new AddManualAdjustment($lineId, '+0.20', 'USD', 'Correcting mistake in adjustment #4', $specialist)],
+];
+
+foreach ($steps as $number => [$description, $command]) {
+    printf('%d. %s (%s %s)%s', $number + 1, $description, $command->amount, $command->currency, PHP_EOL);
+
+    if ($command instanceof ApplySystemCalculation) {
+        ($app->applySystemCalculation)($command);
+    } else {
+        ($app->addManualAdjustment)($command);
+    }
+
+    $history = ($app->getEarningLineHistory)(new GetEarningLineHistory($lineId));
+    printf('   current value: %s%s%s', MoneyFormatter::format($history->currentValue), PHP_EOL, PHP_EOL);
+}
+
+echo "Audit history of earning line \"{$lineId}\":", PHP_EOL, PHP_EOL;
+echo HistoryTable::render(($app->getEarningLineHistory)(new GetEarningLineHistory($lineId)));
