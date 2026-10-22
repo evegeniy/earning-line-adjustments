@@ -11,25 +11,27 @@ use Payroll\Domain\Shared\ConcurrencyConflict;
 use WeakMap;
 
 /**
- * In-memory storage for the demo and the tests that behaves like a real database:
+ * In-memory storage for the demo and the tests that behaves like a real database with an ORM:
  *
  *  - find() always returns a fresh, independent instance, never a shared reference;
+ *  - save() writes nothing when the instance has not changed since it was loaded;
  *  - save() uses optimistic locking, so a stale instance cannot overwrite newer data.
  *
- * The latter protects a business rule: a system recalculation that loaded the line just
- * before a specialist's first adjustment must not be able to save over it and undo the freeze.
+ * The last two protect business rules: a system recalculation that loaded the line just before
+ * a specialist's first adjustment must not save over it and undo the freeze, while an ignored
+ * recalculation must not make a specialist's concurrent adjustment fail.
  */
 final class InMemoryEarningLineRepository implements EarningLineRepository
 {
     /** @var array<string, array{version: positive-int, snapshot: string}> */
     private array $records = [];
 
-    /** @var WeakMap<EarningLine, positive-int> stored version each instance in memory is based on */
-    private WeakMap $loadedVersions;
+    /** @var WeakMap<EarningLine, array{version: positive-int, snapshot: string}> record each instance in memory is based on */
+    private WeakMap $loadedFrom;
 
     public function __construct()
     {
-        $this->loadedVersions = new WeakMap();
+        $this->loadedFrom = new WeakMap();
     }
 
     public function find(EarningLineId $id): ?EarningLine
@@ -42,7 +44,7 @@ final class InMemoryEarningLineRepository implements EarningLineRepository
 
         $line = unserialize($record['snapshot'], ['allowed_classes' => true]);
         \assert($line instanceof EarningLine);
-        $this->loadedVersions[$line] = $record['version'];
+        $this->loadedFrom[$line] = $record;
 
         return $line;
     }
@@ -50,17 +52,30 @@ final class InMemoryEarningLineRepository implements EarningLineRepository
     public function save(EarningLine $line): void
     {
         $id = $line->id()->value;
+        $snapshot = self::snapshotOf($line);
+        $loadedFrom = $this->loadedFrom[$line] ?? null;
+
+        if ($snapshot === ($loadedFrom['snapshot'] ?? null)) {
+            return;
+        }
+
         $storedVersion = $this->records[$id]['version'] ?? 0;
 
-        if (($this->loadedVersions[$line] ?? 0) !== $storedVersion) {
+        if (($loadedFrom['version'] ?? 0) !== $storedVersion) {
             throw ConcurrencyConflict::onAggregate('Earning line', $id);
         }
 
+        $record = ['version' => $storedVersion + 1, 'snapshot' => $snapshot];
+        $this->records[$id] = $record;
+        $this->loadedFrom[$line] = $record;
+    }
+
+    private static function snapshotOf(EarningLine $line): string
+    {
         // Pending events are not state; a real database would not store them either.
         $snapshot = clone $line;
         $snapshot->releaseEvents();
 
-        $this->records[$id] = ['version' => $storedVersion + 1, 'snapshot' => serialize($snapshot)];
-        $this->loadedVersions[$line] = $storedVersion + 1;
+        return serialize($snapshot);
     }
 }

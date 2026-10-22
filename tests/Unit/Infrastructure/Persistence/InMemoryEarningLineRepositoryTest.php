@@ -83,6 +83,23 @@ final class InMemoryEarningLineRepositoryTest extends TestCase
         self::assertEquals(Money::of('1004.45', Currency::USD), $stored->currentValue());
     }
 
+    public function testIgnoredRecalculationDoesNotMakeConcurrentAdjustmentFail(): void
+    {
+        $line = $this->newLine('1050.00');
+        $this->adjust($line, '-45.55');
+        $this->repository->save($line);
+        $loadedByRecalculationJob = $this->find();
+        $loadedBySpecialist = $this->find();
+
+        $loadedByRecalculationJob->recalculate(Money::of('1200.00', Currency::USD), new DateTimeImmutable());
+        $this->repository->save($loadedByRecalculationJob);
+
+        $this->adjust($loadedBySpecialist, '+100.10');
+        $this->repository->save($loadedBySpecialist);
+
+        self::assertEquals(Money::of('1104.55', Currency::USD), $this->find()->currentValue());
+    }
+
     public function testSameLineCannotBeCreatedTwice(): void
     {
         $this->repository->save($this->newLine('1000.00'));
