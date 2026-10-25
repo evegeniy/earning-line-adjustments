@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Payroll\Application\Command\AddManualAdjustment;
 
-use Payroll\Application\EventBus;
 use Payroll\Domain\EarningLine\AdjustmentComment;
 use Payroll\Domain\EarningLine\EarningLineId;
 use Payroll\Domain\EarningLine\EarningLineRepository;
@@ -18,7 +17,6 @@ final readonly class AddManualAdjustmentHandler
 {
     public function __construct(
         private EarningLineRepository $lines,
-        private EventBus $eventBus,
         private ClockInterface $clock,
     ) {}
 
@@ -35,6 +33,5 @@ final readonly class AddManualAdjustmentHandler
         );
 
         $this->lines->save($line);
-        $this->eventBus->publish(...$line->releaseEvents());
     }
 }

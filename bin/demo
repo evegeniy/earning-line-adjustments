@@ -10,25 +10,14 @@ declare(strict_types=1);
 
 use Payroll\Application\Command\AddManualAdjustment\AddManualAdjustment;
 use Payroll\Application\Command\ApplySystemCalculation\ApplySystemCalculation;
-use Payroll\Application\EventSubscriber;
 use Payroll\Application\Query\GetEarningLineHistory\GetEarningLineHistory;
-use Payroll\Domain\Shared\DomainEvent;
-use Payroll\Infrastructure\Clock\SystemClock;
 use Payroll\Infrastructure\InMemoryContainer;
 use Payroll\UI\Cli\HistoryTable;
 use Payroll\UI\Cli\MoneyFormatter;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-// Shows which domain events every step produced.
-$eventPrinter = new class implements EventSubscriber {
-    public function __invoke(DomainEvent $event): void
-    {
-        echo '   event: ', (new ReflectionClass($event))->getShortName(), PHP_EOL;
-    }
-};
-
-$app = new InMemoryContainer(new SystemClock(), $eventPrinter);
+$app = new InMemoryContainer();
 $lineId = 'base-salary-2025-01';
 $specialist = 'specialist-1';
 
@@ -52,8 +41,8 @@ foreach ($steps as $number => [$description, $command]) {
         ($app->addManualAdjustment)($command);
     }
 
-    $history = ($app->getEarningLineHistory)(new GetEarningLineHistory($lineId));
-    printf('   current value: %s%s%s', MoneyFormatter::format($history->currentValue), PHP_EOL, PHP_EOL);
+    $line = ($app->getEarningLineHistory)(new GetEarningLineHistory($lineId));
+    printf('   current value: %s%s%s', MoneyFormatter::format($line->currentValue()), PHP_EOL, PHP_EOL);
 }
 
 echo "Audit history of earning line \"{$lineId}\":", PHP_EOL, PHP_EOL;

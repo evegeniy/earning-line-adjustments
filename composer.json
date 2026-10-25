@@ -1,6 +1,6 @@
 {
     "name": "alcor/earning-line-adjustments",
-    "description": "Proof of concept: audited manual adjustments of a payroll earning line (DDD + CQRS).",
+    "description": "Proof of concept: audited manual adjustments of a payroll earning line.",
     "type": "project",
     "license": "MIT",
     "require": {

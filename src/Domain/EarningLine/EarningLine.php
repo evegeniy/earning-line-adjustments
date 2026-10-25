@@ -5,11 +5,6 @@ declare(strict_types=1);
 namespace Payroll\Domain\EarningLine;
 
 use DateTimeImmutable;
-use Payroll\Domain\EarningLine\Event\EarningLineCalculated;
-use Payroll\Domain\EarningLine\Event\EarningLineRecalculated;
-use Payroll\Domain\EarningLine\Event\ManualAdjustmentAdded;
-use Payroll\Domain\EarningLine\Event\SystemRecalculationIgnored;
-use Payroll\Domain\Shared\AggregateRoot;
 use Payroll\Domain\Shared\Currency;
 use Payroll\Domain\Shared\CurrencyMismatch;
 use Payroll\Domain\Shared\Money;
@@ -24,7 +19,7 @@ use Payroll\Domain\Shared\Money;
  *  - The current value is always the (frozen) system value plus the sum of all adjustments.
  *  - Every amount is in the line's currency.
  */
-final class EarningLine extends AggregateRoot
+final class EarningLine
 {
     /** @var list<ManualAdjustment> */
     private array $adjustments = [];
@@ -34,38 +29,26 @@ final class EarningLine extends AggregateRoot
         private Money $systemValue,
     ) {}
 
-    public static function calculate(EarningLineId $id, Money $systemValue, DateTimeImmutable $calculatedAt): self
+    public static function calculate(EarningLineId $id, Money $systemValue): self
     {
-        $line = new self($id, $systemValue);
-        $line->recordThat(new EarningLineCalculated($id, $systemValue, $calculatedAt));
-
-        return $line;
+        return new self($id, $systemValue);
     }
 
     /**
      * Applies a value the system calculated from (possibly changed) source data.
      *
-     * Once a specialist has adjusted the line, their corrections take permanent precedence:
-     * the recalculation is ignored, but still recorded as an event so it stays observable.
+     * Once a specialist has adjusted the line, their corrections take permanent precedence
+     * and the recalculation is ignored.
      */
-    public function recalculate(Money $systemValue, DateTimeImmutable $calculatedAt): void
+    public function recalculate(Money $systemValue): void
     {
-        if ($this->isManuallyAdjusted()) {
-            $this->recordThat(new SystemRecalculationIgnored($this->id, $systemValue, $calculatedAt));
-
-            return;
-        }
-
         $this->assertLineCurrency($systemValue);
 
-        if ($systemValue->equals($this->systemValue)) {
+        if ($this->isManuallyAdjusted()) {
             return;
         }
 
-        $previousValue = $this->systemValue;
         $this->systemValue = $systemValue;
-
-        $this->recordThat(new EarningLineRecalculated($this->id, $previousValue, $systemValue, $calculatedAt));
     }
 
     public function addManualAdjustment(
@@ -76,17 +59,7 @@ final class EarningLine extends AggregateRoot
     ): void {
         $this->assertLineCurrency($amount);
 
-        $adjustment = new ManualAdjustment(\count($this->adjustments) + 1, $amount, $comment, $adjustedBy, $adjustedAt);
-        $this->adjustments[] = $adjustment;
-
-        $this->recordThat(new ManualAdjustmentAdded(
-            $this->id,
-            $adjustment->sequence,
-            $adjustment->amount,
-            $adjustment->comment,
-            $adjustment->adjustedBy,
-            $adjustment->adjustedAt,
-        ));
+        $this->adjustments[] = new ManualAdjustment(\count($this->adjustments) + 1, $amount, $comment, $adjustedBy, $adjustedAt);
     }
 
     public function id(): EarningLineId

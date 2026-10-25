@@ -7,8 +7,8 @@ namespace Payroll\Tests\Acceptance;
 use Payroll\Application\Command\AddManualAdjustment\AddManualAdjustment;
 use Payroll\Application\Command\ApplySystemCalculation\ApplySystemCalculation;
 use Payroll\Application\Query\GetEarningLineHistory\GetEarningLineHistory;
-use Payroll\Application\ReadModel\AdjustmentEntry;
-use Payroll\Application\ReadModel\EarningLineHistory;
+use Payroll\Domain\EarningLine\EarningLine;
+use Payroll\Domain\EarningLine\ManualAdjustment;
 use Payroll\Infrastructure\InMemoryContainer;
 use Payroll\Tests\Support\TestClock;
 use PHPUnit\Framework\TestCase;
@@ -62,10 +62,10 @@ final class ManualAdjustmentsBusinessCaseTest extends TestCase
     {
         $this->replayBusinessCase();
 
-        $history = $this->history();
+        $line = $this->history();
 
-        self::assertTrue($history->isSystemValueFrozen());
-        self::assertSame('1050.00', $history->systemValue->toDecimalString(), 'System value frozen at step 3');
+        self::assertTrue($line->isManuallyAdjusted());
+        self::assertSame('1050.00', $line->systemValue()->toDecimalString(), 'System value frozen at step 3');
         self::assertSame(
             [
                 [1, '-45.55', 'Employee declined dental benefit; reversing deduction'],
@@ -75,11 +75,11 @@ final class ManualAdjustmentsBusinessCaseTest extends TestCase
                 [5, '0.20', 'Correcting mistake in adjustment #4'],
             ],
             array_map(
-                static fn(AdjustmentEntry $entry): array => [$entry->sequence, $entry->amount->toDecimalString(), $entry->comment],
-                $history->adjustments,
+                static fn(ManualAdjustment $adjustment): array => [$adjustment->sequence, $adjustment->amount->toDecimalString(), $adjustment->comment->value],
+                $line->adjustments(),
             ),
         );
-        self::assertSame('1104.45', $history->currentValue->toDecimalString());
+        self::assertSame('1104.45', $line->currentValue()->toDecimalString());
     }
 
     public function testEveryAdjustmentIsTraceableToItsAuthorAndTime(): void
@@ -88,10 +88,10 @@ final class ManualAdjustmentsBusinessCaseTest extends TestCase
         $this->specialistAdjusts('-45.55', 'Employee declined dental benefit; reversing deduction');
         $adjustedAt = $this->clock->now();
 
-        $entry = $this->history()->adjustments[0];
+        $adjustment = $this->history()->adjustments()[0];
 
-        self::assertSame('specialist-1', $entry->adjustedBy);
-        self::assertEquals($adjustedAt, $entry->adjustedAt);
+        self::assertSame('specialist-1', $adjustment->adjustedBy->value);
+        self::assertEquals($adjustedAt, $adjustment->adjustedAt);
     }
 
     private function replayBusinessCase(): void
@@ -108,7 +108,6 @@ final class ManualAdjustmentsBusinessCaseTest extends TestCase
 
     private function systemCalculates(string $amount): void
     {
-        $this->clock->advance('PT1H');
         ($this->app->applySystemCalculation)(new ApplySystemCalculation(self::LINE_ID, $amount, 'USD'));
     }
 
@@ -120,10 +119,10 @@ final class ManualAdjustmentsBusinessCaseTest extends TestCase
 
     private function assertCurrentValue(string $expected, string $step): void
     {
-        self::assertSame($expected, $this->history()->currentValue->toDecimalString(), $step);
+        self::assertSame($expected, $this->history()->currentValue()->toDecimalString(), $step);
     }
 
-    private function history(): EarningLineHistory
+    private function history(): EarningLine
     {
         return ($this->app->getEarningLineHistory)(new GetEarningLineHistory(self::LINE_ID));
     }

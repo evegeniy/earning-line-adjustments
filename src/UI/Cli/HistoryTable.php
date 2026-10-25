@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Payroll\UI\Cli;
 
-use Payroll\Application\ReadModel\EarningLineHistory;
+use Payroll\Domain\EarningLine\EarningLine;
 
 /**
  * Renders the audit history of an earning line as a plain-text table.
@@ -15,27 +15,27 @@ final class HistoryTable
 
     private const int VALUE_COLUMN = 1;
 
-    public static function render(EarningLineHistory $history): string
+    public static function render(EarningLine $line): string
     {
         $rows = [[
-            $history->isSystemValueFrozen() ? 'System value (frozen)' : 'System value',
-            MoneyFormatter::format($history->systemValue),
+            $line->isManuallyAdjusted() ? 'System value (frozen)' : 'System value',
+            MoneyFormatter::format($line->systemValue()),
             '',
             '',
             '',
         ]];
 
-        foreach ($history->adjustments as $entry) {
+        foreach ($line->adjustments() as $adjustment) {
             $rows[] = [
-                'Adjustment ' . $entry->sequence,
-                MoneyFormatter::format($entry->amount, withSign: true),
-                $entry->comment,
-                $entry->adjustedBy,
-                $entry->adjustedAt->format('Y-m-d H:i'),
+                'Adjustment ' . $adjustment->sequence,
+                MoneyFormatter::format($adjustment->amount, withSign: true),
+                $adjustment->comment->value,
+                $adjustment->adjustedBy->value,
+                $adjustment->adjustedAt->format('Y-m-d H:i'),
             ];
         }
 
-        $rows[] = ['Current value', MoneyFormatter::format($history->currentValue), '', '', ''];
+        $rows[] = ['Current value', MoneyFormatter::format($line->currentValue()), '', '', ''];
 
         $widths = array_map(
             static fn(int $column): int => max(array_map(mb_strlen(...), array_column([self::HEADER, ...$rows], $column))),

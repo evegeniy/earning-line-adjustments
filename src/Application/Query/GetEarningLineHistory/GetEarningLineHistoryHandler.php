@@ -4,20 +4,25 @@ declare(strict_types=1);
 
 namespace Payroll\Application\Query\GetEarningLineHistory;
 
-use Payroll\Application\ReadModel\EarningLineHistory;
-use Payroll\Application\ReadModel\EarningLineHistoryStore;
+use Payroll\Domain\EarningLine\EarningLine;
 use Payroll\Domain\EarningLine\EarningLineId;
+use Payroll\Domain\EarningLine\EarningLineRepository;
 use Payroll\Domain\EarningLine\Exception\EarningLineNotFound;
 
+/**
+ * The line itself is the audit view: its (frozen) system value, every adjustment in order
+ * and the current value they produce. A separate read model would only duplicate that state.
+ */
 final readonly class GetEarningLineHistoryHandler
 {
     public function __construct(
-        private EarningLineHistoryStore $histories,
+        private EarningLineRepository $lines,
     ) {}
 
-    public function __invoke(GetEarningLineHistory $query): EarningLineHistory
+    public function __invoke(GetEarningLineHistory $query): EarningLine
     {
-        return $this->histories->find($query->lineId)
-            ?? throw EarningLineNotFound::withId(new EarningLineId($query->lineId));
+        $id = new EarningLineId($query->lineId);
+
+        return $this->lines->find($id) ?? throw EarningLineNotFound::withId($id);
     }
 }

@@ -43,13 +43,6 @@ final class InMemoryEarningLineRepositoryTest extends TestCase
         self::assertFalse($this->find()->isManuallyAdjusted());
     }
 
-    public function testDoesNotPersistPendingEvents(): void
-    {
-        $this->repository->save($this->newLine('1000.00'));
-
-        self::assertSame([], $this->find()->releaseEvents());
-    }
-
     public function testSameInstanceCanBeSavedRepeatedly(): void
     {
         $line = $this->newLine('1000.00');
@@ -70,7 +63,7 @@ final class InMemoryEarningLineRepositoryTest extends TestCase
         $this->adjust($loadedBySpecialist, '-45.55');
         $this->repository->save($loadedBySpecialist);
 
-        $loadedByRecalculationJob->recalculate(Money::of('1200.00', Currency::USD), new DateTimeImmutable());
+        $loadedByRecalculationJob->recalculate(Money::of('1200.00', Currency::USD));
 
         try {
             $this->repository->save($loadedByRecalculationJob);
@@ -91,7 +84,7 @@ final class InMemoryEarningLineRepositoryTest extends TestCase
         $loadedByRecalculationJob = $this->find();
         $loadedBySpecialist = $this->find();
 
-        $loadedByRecalculationJob->recalculate(Money::of('1200.00', Currency::USD), new DateTimeImmutable());
+        $loadedByRecalculationJob->recalculate(Money::of('1200.00', Currency::USD));
         $this->repository->save($loadedByRecalculationJob);
 
         $this->adjust($loadedBySpecialist, '+100.10');
@@ -111,7 +104,7 @@ final class InMemoryEarningLineRepositoryTest extends TestCase
 
     private function newLine(string $systemValue): EarningLine
     {
-        return EarningLine::calculate($this->lineId, Money::of($systemValue, Currency::USD), new DateTimeImmutable());
+        return EarningLine::calculate($this->lineId, Money::of($systemValue, Currency::USD));
     }
 
     private function find(): EarningLine

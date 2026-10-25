@@ -52,7 +52,7 @@ final class InMemoryEarningLineRepository implements EarningLineRepository
     public function save(EarningLine $line): void
     {
         $id = $line->id()->value;
-        $snapshot = self::snapshotOf($line);
+        $snapshot = serialize($line);
         $loadedFrom = $this->loadedFrom[$line] ?? null;
 
         if ($snapshot === ($loadedFrom['snapshot'] ?? null)) {
@@ -68,14 +68,5 @@ final class InMemoryEarningLineRepository implements EarningLineRepository
         $record = ['version' => $storedVersion + 1, 'snapshot' => $snapshot];
         $this->records[$id] = $record;
         $this->loadedFrom[$line] = $record;
-    }
-
-    private static function snapshotOf(EarningLine $line): string
-    {
-        // Pending events are not state; a real database would not store them either.
-        $snapshot = clone $line;
-        $snapshot->releaseEvents();
-
-        return serialize($snapshot);
     }
 }
